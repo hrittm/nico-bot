@@ -115,7 +115,7 @@ async def on_message(message: discord.Message):
 
             try:
                 response = ai_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='models/gemini-2.5-flash',
                     contents=full_request,
                     config=types.GenerateContentConfig(
                         system_instruction=NICO_SYSTEM_INSTRUCTION,
