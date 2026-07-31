@@ -10,7 +10,7 @@ from google.genai import types
 from dotenv import load_dotenv
 
 # Import Nico's persona system prompt
-from nico_persona import NICO_SYSTEM_INSTRUCTION
+from persona import NICO_SYSTEM_INSTRUCTION
 
 load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
