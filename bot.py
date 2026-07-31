@@ -19,7 +19,10 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 # Optional dedicated channel ID (Set in Render environment variables or leave 0)
 DEDICATED_CHANNEL_ID = int(os.getenv('DEDICATED_CHANNEL_ID', '0'))
 
-# Initialize Google GenAI Client
+# Initialize Google GenAI Client securely
+if not GEMINI_API_KEY:
+    raise ValueError("CRITICAL: GEMINI_API_KEY environment variable is missing!")
+
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Text memory buffer per channel ( capped at 20 messages / 10 turns )
@@ -174,12 +177,17 @@ async def solve(interaction: discord.Interaction, query: str):
 # --- SLASH COMMAND: /clear ---
 @bot.tree.command(name="clear", description="Clear Nico's memory buffer for this channel")
 async def clear(interaction: discord.Interaction):
+    # Defer immediately to prevent 3-second timeouts
+    await interaction.response.defer(ephemeral=False)
+    
     channel_id = interaction.channel_id
-    if channel_id in channel_memories:
+    if channel_id in channel_memories and len(channel_memories[channel_id]) > 0:
         channel_memories[channel_id] = []
-        await interaction.response.send_message("The slate is clean once more. What shall we explore next?", ephemeral=False)
+        await interaction.followup.send("The slate is clean once more. What shall we explore next?")
     else:
-        await interaction.response.send_message("There are no recent records stored for this channel.", ephemeral=True)
+        # Note: If you want this fallback to be hidden from others, change ephemeral=True 
+        # but keep in mind defer(ephemeral=False) forces the followup to match visibility.
+        await interaction.followup.send("There are no recent records stored for this channel.")
 
 if __name__ == "__main__":
     threading.Thread(target=run_health_server, daemon=True).start()
