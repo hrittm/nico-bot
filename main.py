@@ -1,5 +1,6 @@
 import asyncio
 import os
+from aiohttp import web
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -18,7 +19,6 @@ async def on_ready():
         print(f"⚠️ Failed to sync slash commands: {e}")
 
 async def load_extensions():
-    # Updated cog names here:
     cogs = ["cogs.ai", "cogs.utility"]
     for cog in cogs:
         try:
@@ -27,7 +27,26 @@ async def load_extensions():
         except Exception as e:
             print(f"❌ Failed to load cog {cog}: {e}")
 
+# Simple HTTP health check handler for Render & UptimeRobot
+async def handle_health_check(request):
+    return web.Response(text="Nico Bot is online and running!")
+
+async def start_dummy_server():
+    app = web.Application()
+    app.router.add_get("/", handle_health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # Render automatically injects the PORT environment variable
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"🌐 Web server listening on port {port} for health checks.")
+
 async def main():
+    # Start the dummy HTTP server alongside the Discord bot
+    await start_dummy_server()
+    
     async with bot:
         await load_extensions()
         token = os.getenv("DISCORD_TOKEN")
