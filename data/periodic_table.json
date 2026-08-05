@@ -1,0 +1,65 @@
+{
+  "hydrogen": {
+    "name": "Hydrogen",
+    "symbol": "H",
+    "atomic_number": 1,
+    "atomic_mass": "1.008 u",
+    "category": "Nonmetal",
+    "phase": "Gas",
+    "electron_configuration": "1s¹"
+  },
+  "helium": {
+    "name": "Helium",
+    "symbol": "He",
+    "atomic_number": 2,
+    "atomic_mass": "4.0026 u",
+    "category": "Noble Gas",
+    "phase": "Gas",
+    "electron_configuration": "1s²"
+  },
+  "lithium": {
+    "name": "Lithium",
+    "symbol": "Li",
+    "atomic_number": 3,
+    "atomic_mass": "6.94 u",
+    "category": "Alkali Metal",
+    "phase": "Solid",
+    "electron_configuration": "[He] 2s¹"
+  },
+    "beryllium": {
+    "name": "Beryllium",
+    "symbol": "Be",
+    "atomic_number": 4,
+    "atomic_mass": "9.012 u",
+    "category": "Alkalineter Metal",
+    "phase": "Solid",
+    "electron_configuration": "[He] 2s²"
+  },
+  "carbon": {
+    "name": "Carbon",
+    "symbol": "C",
+    "atomic_number": 6,
+    "atomic_mass": "12.011 u",
+    "category": "Nonmetal",
+    "phase": "Solid",
+    "electron_configuration": "[He] 2s² 2p²"
+  },
+  "oxygen": {
+    "name": "Oxygen",
+    "symbol": "O",
+    "atomic_number": 8,
+    "atomic_mass": "15.999 u",
+    "category": "Nonmetal",
+    "phase": "Gas",
+    "electron_configuration": "[He] 2s² 2p⁴"
+  },
+  "gold": {
+    "name": "Gold",
+    "symbol": "Au",
+    "atomic_number": 79,
+    "atomic_mass": "196.97 u",
+    "category": "Transition Metal",
+    "phase": "Solid",
+    "electron_configuration": "[Xe] 4f¹⁴ 5d¹⁰ 6s¹"
+  }
+}
