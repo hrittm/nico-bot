@@ -6,12 +6,8 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
-SYSTEM_PROMPT = """
-You are Nico, a friendly, witty, smart, and approachable AI assistant for our Discord community.
-- Your tone should feel natural, enthusiastic, and relatable to teenagers and young adults.
-- Keep responses engaging, well-formatted, and concise unless deep detail is requested.
-- If live search results are available, use them to provide up-to-date information seamlessly.
-"""
+# Import from config/persona.py
+from config.persona import SYSTEM_PROMPT
 
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -19,13 +15,10 @@ class AICommands(commands.Cog):
         api_key = os.getenv("GEMINI_API_KEY")
         self.ai_client = genai.Client(api_key=api_key)
 
-    @app_commands.command(name="ask", description="Ask Nico anything! With live search and automatic fallback.")
-    @app_commands.describe(prompt="What would you like to ask Nico?")
-    async def ask(self, interaction: discord.Interaction, prompt: str):
-        await interaction.response.defer()
-
-        # Attempt 1: Try generating content with Google Search Grounding enabled
+    async def _generate_response(self, prompt: str) -> str:
+        """Helper method to handle Gemini API generation with search grounding and fallback."""
         try:
+            # Attempt 1: Try generating content with Google Search Grounding enabled
             response = self.ai_client.models.generate_content(
                 model="gemini-3.6-flash",
                 contents=prompt,
@@ -35,10 +28,9 @@ class AICommands(commands.Cog):
                     tools=[{"google_search": {}}]
                 )
             )
-            text_output = response.text if response.text else "Hmm, I couldn't get an answer for that."
+            return response.text if response.text else "Hmm, I couldn't get an answer for that."
 
         except APIError as api_err:
-            # Handle rate limits or quota exceeded errors gracefully
             err_msg = str(api_err).lower()
             if "quota" in err_msg or "rate limit" in err_msg or "429" in err_msg:
                 try:
@@ -47,19 +39,48 @@ class AICommands(commands.Cog):
                         model="gemini-3.6-flash",
                         contents=prompt,
                         config=types.GenerateContentConfig(
-                            system_instruction=SYSTEM_PROMPT + "\nNote: Live web search is currently throttled, answer using internal knowledge.",
+                            system_instruction=SYSTEM_PROMPT,
                             temperature=0.7
                         )
                     )
-                    text_output = f"{response.text}\n\n*(⚡ Note: Live search quota reached; responded using internal AI knowledge)*"
+                    return response.text if response.text else "Hmm, I couldn't get an answer for that."
                 except Exception as fallback_err:
-                    text_output = f"⚠️ Quota exceeded and fallback failed: `{str(fallback_err)}`"
+                    return f"⚠️ Quota exceeded and fallback failed: `{str(fallback_err)}`"
             else:
-                text_output = f"⚠️ API Error: `{str(api_err)}`"
+                return f"⚠️ API Error: `{str(api_err)}`"
         except Exception as e:
-            text_output = f"⚠️ Unexpected error: `{str(e)}`"
+            return f"⚠️ Unexpected error: `{str(e)}`"
 
-        # Enforce Discord 2000 character limit
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        # Ignore messages sent by any bot (including Nico itself)
+        if message.author.bot:
+            return
+
+        # Trigger if Nico is mentioned in the message
+        if self.bot.user in message.mentions:
+            # Strip both standard user mentions (<@id>) and nickname mentions (<@!id>)
+            clean_prompt = message.content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip()
+
+            if not clean_prompt:
+                await message.reply("Hey there! How can I help you today?")
+                return
+
+            async with message.channel.typing():
+                text_output = await self._generate_response(clean_prompt)
+
+            if len(text_output) > 2000:
+                await message.reply(f"{text_output[:1990]}\n\n*(Truncated due to length)*")
+            else:
+                await message.reply(text_output)
+
+    @app_commands.command(name="ask", description="Ask Nico anything! With live search and automatic fallback.")
+    @app_commands.describe(prompt="What would you like to ask Nico?")
+    async def ask(self, interaction: discord.Interaction, prompt: str):
+        await interaction.response.defer()
+
+        text_output = await self._generate_response(prompt)
+
         if len(text_output) > 2000:
             await interaction.followup.send(f"{text_output[:1990]}\n\n*(Truncated due to length)*")
         else:
