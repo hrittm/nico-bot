@@ -1,3 +1,4 @@
+import asyncio
 import os
 import discord
 from discord import app_commands
@@ -7,7 +8,8 @@ from google.genai import types
 from google.genai.errors import APIError
 
 # Import from config/persona.py
-from config.persona import SYSTEM_PROMPT
+from config.persona import SYSTEM_PROMPT, SOLVE_SYSTEM_PROMPT
+
 
 class AICommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -16,16 +18,23 @@ class AICommands(commands.Cog):
         self.ai_client = genai.Client(api_key=api_key)
 
     async def _generate_response(self, prompt: str) -> str:
-        """Helper method to handle Gemini API generation with search grounding and fallback."""
+        """Helper method to handle Gemini API generation with search grounding and fallback.
+
+        Uses asyncio.to_thread to run the blocking SDK call off the event loop,
+        preventing the bot from freezing for all users during generation.
+        """
         try:
-            # Attempt 1: Try generating content with Google Search Grounding enabled
-            response = self.ai_client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.7,
-                    tools=[{"google_search": {}}]
+            # Attempt 1: Try generating content with Google Search Grounding enabled.
+            # Wrapped in asyncio.to_thread because generate_content is a blocking call.
+            response = await asyncio.to_thread(
+                lambda: self.ai_client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.7,
+                        tools=[{"google_search": {}}]
+                    )
                 )
             )
             return response.text if response.text else "Hmm, I couldn't get an answer for that."
@@ -34,13 +43,15 @@ class AICommands(commands.Cog):
             err_msg = str(api_err).lower()
             if "quota" in err_msg or "rate limit" in err_msg or "429" in err_msg:
                 try:
-                    # Fallback Attempt: Generate response WITHOUT Search Grounding
-                    response = self.ai_client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            system_instruction=SYSTEM_PROMPT,
-                            temperature=0.7
+                    # Fallback Attempt: Generate response WITHOUT Search Grounding.
+                    response = await asyncio.to_thread(
+                        lambda: self.ai_client.models.generate_content(
+                            model="gemini-3.6-flash",
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                system_instruction=SYSTEM_PROMPT,
+                                temperature=0.7
+                            )
                         )
                     )
                     return response.text if response.text else "Hmm, I couldn't get an answer for that."
@@ -60,7 +71,12 @@ class AICommands(commands.Cog):
         # Trigger if Nico is mentioned in the message
         if self.bot.user in message.mentions:
             # Strip both standard user mentions (<@id>) and nickname mentions (<@!id>)
-            clean_prompt = message.content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip()
+            clean_prompt = (
+                message.content
+                .replace(f"<@{self.bot.user.id}>", "")
+                .replace(f"<@!{self.bot.user.id}>", "")
+                .strip()
+            )
 
             if not clean_prompt:
                 await message.reply("Hey there! How can I help you today?")
@@ -92,24 +108,32 @@ class AICommands(commands.Cog):
         await interaction.response.defer()
 
         try:
-            response = self.ai_client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=f"Please solve this step-by-step with clear reasoning:\n\n{problem}",
-                config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_budget=1024),
-                    temperature=0.2,
+            # Uses SOLVE_SYSTEM_PROMPT: a neutral, rigorous academic solver — no Nico Robin persona.
+            # Wrapped in asyncio.to_thread to avoid blocking the event loop.
+            response = await asyncio.to_thread(
+                lambda: self.ai_client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=f"Solve the following problem:\n\n{problem}",
+                    config=types.GenerateContentConfig(
+                        system_instruction=SOLVE_SYSTEM_PROMPT,
+                        thinking_config=types.ThinkingConfig(thinking_budget=1024),
+                        temperature=0.2,
+                    )
                 )
             )
 
             text_output = response.text if response.text else "I couldn't produce a solution for this problem."
 
             if len(text_output) > 2000:
-                await interaction.followup.send(f"**🧠 Solution:**\n\n{text_output[:1950]}\n\n*(Truncated due to length limit)*")
+                await interaction.followup.send(
+                    f"**🧠 Solution:**\n\n{text_output[:1950]}\n\n*(Truncated due to length limit)*"
+                )
             else:
                 await interaction.followup.send(f"**🧠 Solution:**\n\n{text_output}")
 
         except Exception as e:
             await interaction.followup.send(f"⚠️ An error occurred while solving: `{str(e)}`")
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(AICommands(bot))

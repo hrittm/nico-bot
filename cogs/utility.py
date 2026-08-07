@@ -4,6 +4,7 @@ import os
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
+from typing import Optional
 import aiohttp
 import discord
 from discord import app_commands
@@ -11,18 +12,132 @@ from discord.ext import commands
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
+# ---------------------------------------------------------------------------
+# Command metadata — used by the /help command
+# ---------------------------------------------------------------------------
+COMMAND_HELP: dict[str, dict] = {
+    "ask": {
+        "emoji": "💬",
+        "short": "Ask Nico anything with live Google Search grounding.",
+        "usage": "`/ask <prompt>`",
+        "details": (
+            "Sends your question to Nico's AI brain, powered by Google Gemini with **Search Grounding** enabled. "
+            "This means Nico can pull in fresh, real-world information to answer your question accurately. "
+            "If the search quota is exceeded, she gracefully falls back to her base knowledge.\n\n"
+            "**Best for:** General knowledge, current events, concept explanations, recommendations."
+        ),
+        "example": "`/ask What is the Pauli Exclusion Principle?`",
+    },
+    "solve": {
+        "emoji": "🧠",
+        "short": "Deep-thinking academic solver for complex problems.",
+        "usage": "`/solve <problem>`",
+        "details": (
+            "Activates extended thinking mode for rigorous, step-by-step problem solving. "
+            "Unlike `/ask`, this mode uses a **neutral academic solver** — no personality, just structured logic. "
+            "It restates the problem, walks through numbered steps with reasoning, applies relevant formulas or principles, "
+            "and concludes with a clearly labelled final answer.\n\n"
+            "**Best for:** Math (calculus, algebra, olympiad), physics, chemistry, formal logic, proofs."
+        ),
+        "example": "`/solve Prove that √2 is irrational.`",
+    },
+    "wolf": {
+        "emoji": "🧮",
+        "short": "Query Wolfram|Alpha for computational results.",
+        "usage": "`/wolf <query>`",
+        "details": (
+            "Sends your query directly to the **Wolfram|Alpha API** and retrieves the primary result pod. "
+            "The response is displayed as a high-definition image embed when available, along with a plaintext result. "
+            "A button to open the full interactive Wolfram|Alpha page is also included.\n\n"
+            "**Best for:** Symbolic math, unit conversions, equation solving, data lookups, function plots."
+        ),
+        "example": "`/wolf integrate x^2 sin(x) dx`",
+    },
+    "atom": {
+        "emoji": "⚛️",
+        "short": "Look up atomic data for any element.",
+        "usage": "`/atom <element>`",
+        "details": (
+            "Queries Nico's **local periodic table database** (offline — no API needed). "
+            "You can search by element **name** or **symbol**. "
+            "Returns atomic number, atomic mass, category, phase at STP, and electron configuration.\n\n"
+            "**Best for:** Quick chemistry reference, homework, lab work."
+        ),
+        "example": "`/atom Gold` or `/atom Au` or `/atom Oxygen`",
+    },
+    "pi": {
+        "emoji": "π",
+        "short": "Print π to up to 1000 decimal places.",
+        "usage": "`/pi [digits]`",
+        "details": (
+            "Prints the value of **π (pi)** to the number of decimal places you specify. "
+            "Defaults to 10 decimal places if no argument is provided. "
+            "Maximum precision supported is **1000 digits**, stored locally for an instant response.\n\n"
+            "**Best for:** Math reference, academic exercises, or just curiosity."
+        ),
+        "example": "`/pi 50`",
+    },
+    "ping": {
+        "emoji": "🏓",
+        "short": "Check Nico's connection latency.",
+        "usage": "`/ping`",
+        "details": (
+            "Measures and displays two latency values:\n"
+            "- **WebSocket Latency** — heartbeat latency between the bot and Discord's gateway.\n"
+            "- **Response Latency** — time from command submission to first response.\n\n"
+            "**Best for:** Diagnosing slowness or verifying the bot is healthy."
+        ),
+        "example": "`/ping`",
+    },
+    "req": {
+        "emoji": "📬",
+        "short": "Submit a bug report or feature suggestion to the developers.",
+        "usage": "`/req <type> <details>`",
+        "details": (
+            "Lets you submit feedback directly to the development team. "
+            "Choose between **🐛 Bug Report** (something is broken) or **💡 Feature Suggestion** (something you'd like added). "
+            "Your submission is logged in a private developer channel with your username, server, and timestamp. "
+            "The confirmation is sent as an ephemeral (private) reply visible only to you.\n\n"
+            "**Best for:** Reporting issues, proposing new commands or improvements."
+        ),
+        "example": "`/req Bug Report` → *The /wolf command returns no image for integrals.*",
+    },
+    "help": {
+        "emoji": "📖",
+        "short": "View all commands or get a detailed breakdown of one.",
+        "usage": "`/help [command]`",
+        "details": (
+            "Without any argument, `/help` displays a full overview of every available command with short descriptions. "
+            "Pass an optional `command` argument to get a detailed breakdown of that specific command, including "
+            "its usage syntax, what it's best suited for, and a concrete example.\n\n"
+            "**Best for:** Getting started, understanding what Nico can do."
+        ),
+        "example": "`/help solve`",
+    },
+}
+
+HELP_EMBED_COLOR = discord.Color.from_rgb(120, 80, 200)  # Deep violet — calm & scholarly
+
+
+# ---------------------------------------------------------------------------
+# Wolfram link button view
+# ---------------------------------------------------------------------------
 class WolframView(discord.ui.View):
     def __init__(self, query: str):
         super().__init__(timeout=180)
         encoded_query = urllib.parse.quote(query)
         web_url = f"https://www.wolframalpha.com/input?i={encoded_query}"
-        
+
         self.add_item(discord.ui.Button(
-            label="🌐 Open Full Web View", 
-            style=discord.ButtonStyle.link, 
+            label="🌐 Open Full Web View",
+            style=discord.ButtonStyle.link,
             url=web_url
         ))
 
+
+# ---------------------------------------------------------------------------
+# Cog
+# ---------------------------------------------------------------------------
 class LocalUtilities(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -43,6 +158,9 @@ class LocalUtilities(commands.Cog):
                 return f.read().strip()
         return "3.14159"
 
+    # -----------------------------------------------------------------------
+    # /ping
+    # -----------------------------------------------------------------------
     @app_commands.command(name="ping", description="Check Nico's response latency.")
     async def ping(self, interaction: discord.Interaction):
         start_time = time.perf_counter()
@@ -52,15 +170,15 @@ class LocalUtilities(commands.Cog):
         api_latency = round(self.bot.latency * 1000)
         bot_latency = round((end_time - start_time) * 1000)
 
-        embed = discord.Embed(
-            title="🏓 Pong!",
-            color=discord.Color.green()
-        )
+        embed = discord.Embed(title="🏓 Pong!", color=discord.Color.green())
         embed.add_field(name="WebSocket Latency", value=f"`{api_latency} ms`", inline=True)
         embed.add_field(name="Response Latency", value=f"`{bot_latency} ms`", inline=True)
 
         await interaction.edit_original_response(content=None, embed=embed)
 
+    # -----------------------------------------------------------------------
+    # /atom
+    # -----------------------------------------------------------------------
     @app_commands.command(name="atom", description="Look up atomic properties for an element.")
     @app_commands.describe(element="Name or symbol of the element (e.g., Oxygen, Au, Carbon)")
     async def atom(self, interaction: discord.Interaction, element: str):
@@ -92,6 +210,9 @@ class LocalUtilities(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    # -----------------------------------------------------------------------
+    # /pi
+    # -----------------------------------------------------------------------
     @app_commands.command(name="pi", description="Print Pi to a specified number of decimal places.")
     @app_commands.describe(digits="Number of decimal places to view (1 to 1000).")
     async def pi(self, interaction: discord.Interaction, digits: int = 10):
@@ -105,10 +226,15 @@ class LocalUtilities(commands.Cog):
         pi_str = self.pi_data[: 2 + digits]
 
         if len(pi_str) > 1900:
-            await interaction.response.send_message(f"**π to {digits} decimal places:**\n```\n{pi_str[:1900]}...\n```")
+            await interaction.response.send_message(
+                f"**π to {digits} decimal places:**\n```\n{pi_str[:1900]}...\n```"
+            )
         else:
             await interaction.response.send_message(f"**π to {digits} decimal places:**\n```{pi_str}```")
 
+    # -----------------------------------------------------------------------
+    # /wolf
+    # -----------------------------------------------------------------------
     @app_commands.command(name="wolf", description="Query Wolfram|Alpha with crisp, high-definition result pods.")
     @app_commands.describe(query="What would you like Wolfram|Alpha to compute?")
     async def wolf(self, interaction: discord.Interaction, query: str):
@@ -120,7 +246,10 @@ class LocalUtilities(commands.Cog):
             return
 
         encoded_query = urllib.parse.quote(query)
-        full_api_url = f"https://api.wolframalpha.com/v2/query?appid={app_id}&input={encoded_query}&mag=2.0&magstep=2"
+        full_api_url = (
+            f"https://api.wolframalpha.com/v2/query"
+            f"?appid={app_id}&input={encoded_query}&mag=2.0&magstep=2"
+        )
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -133,7 +262,9 @@ class LocalUtilities(commands.Cog):
                     root = ET.fromstring(xml_data)
 
                     if root.attrib.get("success") == "false":
-                        await interaction.followup.send("🔴 Wolfram|Alpha could not compute a result for that query.")
+                        await interaction.followup.send(
+                            "🔴 Wolfram|Alpha could not compute a result for that query."
+                        )
                         return
 
                     pods = root.findall("pod")
@@ -142,7 +273,12 @@ class LocalUtilities(commands.Cog):
 
                     for pod in pods:
                         pod_id = pod.attrib.get("id", "").lower()
-                        if pod.attrib.get("primary") == "true" or "result" in pod_id or "solution" in pod_id or "plot" in pod_id:
+                        if (
+                            pod.attrib.get("primary") == "true"
+                            or "result" in pod_id
+                            or "solution" in pod_id
+                            or "plot" in pod_id
+                        ):
                             main_pod = pod
                             break
                         if "input" in pod_id and not input_pod:
@@ -155,17 +291,22 @@ class LocalUtilities(commands.Cog):
 
                     img_element = main_pod.find(".//img") if main_pod is not None else None
                     plaintext_element = main_pod.find(".//plaintext") if main_pod is not None else None
-                    
-                    input_text = input_pod.find(".//plaintext").text if input_pod is not None and input_pod.find(".//plaintext") is not None else query
 
-                    embed = discord.Embed(
-                        title="🧮 Wolfram|Alpha Result",
-                        color=discord.Color.red()
+                    input_text = (
+                        input_pod.find(".//plaintext").text
+                        if input_pod is not None and input_pod.find(".//plaintext") is not None
+                        else query
                     )
+
+                    embed = discord.Embed(title="🧮 Wolfram|Alpha Result", color=discord.Color.red())
                     embed.add_field(name="Input", value=f"`{input_text}`", inline=False)
 
                     if plaintext_element is not None and plaintext_element.text:
-                        embed.add_field(name="Result", value=f"```\n{plaintext_element.text}\n```", inline=False)
+                        embed.add_field(
+                            name="Result",
+                            value=f"```\n{plaintext_element.text}\n```",
+                            inline=False
+                        )
 
                     view = WolframView(query=query)
 
@@ -184,6 +325,9 @@ class LocalUtilities(commands.Cog):
         except Exception as e:
             await interaction.followup.send(f"⚠️ Error querying Wolfram|Alpha: `{str(e)}`")
 
+    # -----------------------------------------------------------------------
+    # /req
+    # -----------------------------------------------------------------------
     @app_commands.command(name="req", description="Submit a feature request or bug report to the developers.")
     @app_commands.choices(req_type=[
         app_commands.Choice(name="🐛 Bug Report", value="Bug Report"),
@@ -209,6 +353,10 @@ class LocalUtilities(commands.Cog):
             )
             return
 
+        # Defer the interaction FIRST to prevent a "did not respond" error if
+        # channel.send is slow or raises an exception before we can reply.
+        await interaction.response.defer(ephemeral=True)
+
         color = discord.Color.red() if req_type.value == "Bug Report" else discord.Color.green()
         log_embed = discord.Embed(
             title=f"New Submission: {req_type.value}",
@@ -216,17 +364,87 @@ class LocalUtilities(commands.Cog):
             color=color,
             timestamp=interaction.created_at
         )
-        log_embed.set_author(name=f"{interaction.user} (ID: {interaction.user.id})", icon_url=interaction.user.display_avatar.url)
+        log_embed.set_author(
+            name=f"{interaction.user} (ID: {interaction.user.id})",
+            icon_url=interaction.user.display_avatar.url
+        )
         if interaction.guild:
             log_embed.add_field(name="Server", value=interaction.guild.name, inline=True)
             log_embed.add_field(name="Channel", value=interaction.channel.name, inline=True)
 
         await channel.send(embed=log_embed)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"✅ Thank you! Your {req_type.value.lower()} has been delivered to the developers.",
             ephemeral=True
         )
+
+    # -----------------------------------------------------------------------
+    # /help
+    # -----------------------------------------------------------------------
+    @app_commands.command(name="help", description="View all of Nico's commands, or get a deep dive on a specific one.")
+    @app_commands.describe(command="The command you'd like to learn more about.")
+    @app_commands.choices(command=[
+        app_commands.Choice(name="💬 ask", value="ask"),
+        app_commands.Choice(name="🧠 solve", value="solve"),
+        app_commands.Choice(name="🧮 wolf", value="wolf"),
+        app_commands.Choice(name="⚛️ atom", value="atom"),
+        app_commands.Choice(name="π  pi", value="pi"),
+        app_commands.Choice(name="🏓 ping", value="ping"),
+        app_commands.Choice(name="📬 req", value="req"),
+        app_commands.Choice(name="📖 help", value="help"),
+    ])
+    async def help(
+        self,
+        interaction: discord.Interaction,
+        command: Optional[app_commands.Choice[str]] = None
+    ):
+        if command is None:
+            # --- Full overview embed ---
+            embed = discord.Embed(
+                title="📖 Nico — Command Reference",
+                description=(
+                    "Hello! I'm Nico — your calm, scholarly academic assistant. "
+                    "Here's a full overview of what I can do.\n"
+                    "Use `/help <command>` to get a detailed breakdown of any specific command."
+                ),
+                color=HELP_EMBED_COLOR
+            )
+
+            for cmd_name, info in COMMAND_HELP.items():
+                embed.add_field(
+                    name=f"{info['emoji']}  `/{cmd_name}` — {info['short']}",
+                    value=f"Usage: {info['usage']}",
+                    inline=False
+                )
+
+            embed.add_field(
+                name="\u200b",
+                value="💡 You can also **@mention me** in any channel to start a conversation directly.",
+                inline=False
+            )
+            embed.set_footer(text="Nico Bot  •  /help <command> for detailed info")
+
+            await interaction.response.send_message(embed=embed)
+
+        else:
+            # --- Detailed view for a specific command ---
+            info = COMMAND_HELP.get(command.value)
+            if not info:
+                await interaction.response.send_message("❌ Command not found.", ephemeral=True)
+                return
+
+            embed = discord.Embed(
+                title=f"{info['emoji']}  `/{command.value}`",
+                description=info["details"],
+                color=HELP_EMBED_COLOR
+            )
+            embed.add_field(name="Usage", value=info["usage"], inline=False)
+            embed.add_field(name="Example", value=info["example"], inline=False)
+            embed.set_footer(text="Nico Bot  •  /help to see all commands")
+
+            await interaction.response.send_message(embed=embed)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(LocalUtilities(bot))
