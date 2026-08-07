@@ -10,6 +10,20 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import numpy as np
+import matplotlib
+# Use non-interactive Agg backend suitable for server environments
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+import sympy as sp
+from sympy.parsing.sympy_parser import (
+    parse_expr,
+    standard_transformations,
+    implicit_multiplication_application,
+    convert_xor
+)
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 
 # ---------------------------------------------------------------------------
@@ -76,6 +90,22 @@ COMMAND_HELP: dict[str, dict] = {
             "**Best for:** Math reference, academic exercises, or just curiosity."
         ),
         "example": "`/pi 50`",
+    },
+    "graph": {
+        "emoji": "📈",
+        "short": "Plot a mathematical function y = f(x) as a graph image.",
+        "usage": "`/graph <equation> [x_min] [x_max]`",
+        "details": (
+            "Parses and plots a mathematical function `y = f(x)` over a configurable x range. "
+            "Powered by **SymPy** (for safe symbolic parsing) and **Matplotlib** (for rendering). "
+            "The graph is rendered in a dark Discord-themed style and returned as an image.\n\n"
+            "Supported syntax:\n"
+            "- Use `^` or `**` for exponents: `x^2` or `x**2`\n"
+            "- Implicit multiplication works: `2x` is treated as `2*x`\n"
+            "- Standard math functions available: `sin`, `cos`, `tan`, `exp`, `log`, `sqrt`, `abs`\n\n"
+            "**Best for:** Visualising functions, checking homework graphs, exploring curve behaviour."
+        ),
+        "example": "`/graph x^2 - 4` or `/graph sin(x) -6.28 6.28` or `/graph x/(x-2) -5 5`",
     },
     "ping": {
         "emoji": "🏓",
@@ -326,6 +356,137 @@ class LocalUtilities(commands.Cog):
             await interaction.followup.send(f"⚠️ Error querying Wolfram|Alpha: `{str(e)}`")
 
     # -----------------------------------------------------------------------
+    # /graph
+    # -----------------------------------------------------------------------
+    @app_commands.command(
+        name="graph", 
+        description="Plot a mathematical function y = f(x) and view the graph as an image."
+    )
+    @app_commands.describe(
+        equation="The function to plot, e.g., '2x^2 - 4x + 1', 'sin(x)', or 'x/(x-2)'",
+        x_min="Minimum x range (default: -10)",
+        x_max="Maximum x range (default: 10)"
+    )
+    async def graph(
+        self, 
+        interaction: discord.Interaction, 
+        equation: str, 
+        x_min: float = -10.0, 
+        x_max: float = 10.0
+    ):
+        await interaction.response.defer()
+
+        if x_min >= x_max:
+            await interaction.followup.send("⚠️ `x_min` must be strictly less than `x_max`.")
+            return
+
+        try:
+            # 1. Safely parse the user equation string
+            x = sp.Symbol('x')
+            transformations = standard_transformations + (
+                implicit_multiplication_application,
+                convert_xor
+            )
+            
+            # Restrict parsing symbols to x and common standard math functions
+            parsed_expr = parse_expr(
+                equation, 
+                transformations=transformations, 
+                local_dict={'x': x}
+            )
+
+            # Convert SymPy expression into a fast, vectorised NumPy function
+            func = sp.lambdify(x, parsed_expr, modules=['numpy'])
+
+            # 2. Generate x and y data points
+            x_vals = np.linspace(x_min, x_max, 1000)
+
+            # Suppress division-by-zero warnings from NumPy (e.g., asymptotes)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                y_vals = func(x_vals)
+
+            # Convert y_vals to float array if lambdify returned a single scalar/constant
+            if not isinstance(y_vals, np.ndarray):
+                y_vals = np.full_like(x_vals, float(y_vals))
+
+            y_vals = y_vals.astype(float)
+
+            # Mask infinities first (e.g., vertical asymptotes)
+            y_vals[~np.isfinite(y_vals)] = np.nan
+
+            # Dynamically clip extreme outliers using IQR to avoid distorting the plot.
+            # This handles asymptotes that land just inside the finite range without
+            # incorrectly clipping large-valued but legitimate functions.
+            finite_vals = y_vals[np.isfinite(y_vals)]
+            if len(finite_vals) > 0:
+                q1, q3 = np.percentile(finite_vals, [5, 95])
+                iqr = q3 - q1
+                clip_margin = max(iqr * 5, 10)  # At least ±10 units of headroom
+                y_vals[y_vals > q3 + clip_margin] = np.nan
+                y_vals[y_vals < q1 - clip_margin] = np.nan
+
+        except Exception as err:
+            await interaction.followup.send(
+                f"⚠️ Could not parse equation `{equation}`.\n"
+                f"**Error:** `{str(err)}`\n"
+                f"*Examples of valid expressions:* `x^2 - 4`, `2x + 3`, `sin(x)`, `x*exp(-x)`"
+            )
+            return
+
+        # 3. Create dark-themed Matplotlib figure.
+        # Use explicit rcParams instead of plt.style.use() to avoid touching
+        # global matplotlib state, which is unsafe when multiple /graph calls
+        # run concurrently on the same thread pool.
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+        fig.patch.set_facecolor("#36393F")
+        ax.set_facecolor("#2F3136")
+        for spine in ax.spines.values():
+            spine.set_edgecolor("#72767D")
+        ax.tick_params(colors="#DCDDDE")
+
+        # Plot function curve
+        ax.plot(x_vals, y_vals, label=f"y = {parsed_expr}", color="#5865F2", linewidth=2.5)
+
+        # Axes and grid
+        ax.axhline(0, color="#FFFFFF", linewidth=0.8, alpha=0.7)
+        ax.axvline(0, color="#FFFFFF", linewidth=0.8, alpha=0.7)
+        ax.grid(True, linestyle="--", alpha=0.25, color="#FFFFFF")
+
+        # Labels and title
+        ax.set_title(
+            f"Graph of $y = {sp.latex(parsed_expr)}$",
+            fontsize=14, color="#FFFFFF", pad=12
+        )
+        ax.set_xlabel("x", fontsize=11, color="#DCDDDE")
+        ax.set_ylabel("y", fontsize=11, color="#DCDDDE")
+        ax.set_xlim(x_min, x_max)
+        ax.legend(
+            loc="upper right",
+            facecolor="#2F3136",
+            edgecolor="none",
+            labelcolor="#DCDDDE"
+        )
+
+        fig.tight_layout()
+
+        # 4. Save plot to in-memory buffer and send as Discord file attachment
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", bbox_inches="tight", facecolor=fig.get_facecolor())
+        buffer.seek(0)
+        plt.close(fig)  # Always close to free memory
+
+        embed = discord.Embed(
+            title=f"📈 Graph of y = {parsed_expr}",
+            description=f"Plotted over x ∈ [{x_min}, {x_max}]",
+            color=discord.Color.from_rgb(88, 101, 242)  # Discord blurple
+        )
+        embed.set_image(url="attachment://graph.png")
+        embed.set_footer(text="Nico Graph Engine  •  Powered by SymPy & Matplotlib")
+
+        file = discord.File(buffer, filename="graph.png")
+        await interaction.followup.send(embed=embed, file=file)
+
+    # -----------------------------------------------------------------------
     # /req
     # -----------------------------------------------------------------------
     @app_commands.command(name="req", description="Submit a feature request or bug report to the developers.")
@@ -388,6 +549,7 @@ class LocalUtilities(commands.Cog):
         app_commands.Choice(name="💬 ask", value="ask"),
         app_commands.Choice(name="🧠 solve", value="solve"),
         app_commands.Choice(name="🧮 wolf", value="wolf"),
+        app_commands.Choice(name="📈 graph", value="graph"),
         app_commands.Choice(name="⚛️ atom", value="atom"),
         app_commands.Choice(name="π  pi", value="pi"),
         app_commands.Choice(name="🏓 ping", value="ping"),

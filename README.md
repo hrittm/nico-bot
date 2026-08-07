@@ -32,6 +32,7 @@ These traits make her persona a natural fit for an academic bot: warm without be
 | 💬 **`/ask`** | Ask Nico anything — Search Grounding enabled with automatic fallback |
 | 🧠 **`/solve`** | Extended thinking mode for rigorous, step-by-step academic problem solving |
 | 🧮 **`/wolf`** | Query Wolfram\|Alpha and receive high-definition image result pods |
+| 📈 **`/graph`** | Plot any `y = f(x)` function as a dark-themed graph image, powered by SymPy + Matplotlib |
 | ⚛️ **`/atom`** | Offline periodic table lookup by element name or symbol |
 | π **`/pi`** | Print π to up to 1000 decimal places, instantly |
 | 📬 **`/req`** | Submit bug reports or feature suggestions directly to a developer log channel |
@@ -41,6 +42,19 @@ These traits make her persona a natural fit for an academic bot: warm without be
 ---
 
 ## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/ask <prompt>` | Ask Nico anything — she uses live Google Search grounding for accurate answers |
+| `/solve <problem>` | Deep-thinking academic solver for math, science, and logic (step-by-step, no persona) |
+| `/wolf <query>` | Query Wolfram\|Alpha and get the result as an image pod + text |
+| `/graph <equation> [x_min] [x_max]` | Plot a `y = f(x)` function as a dark-themed graph image |
+| `/atom <element>` | Look up element info by name or symbol |
+| `/pi [digits]` | Print π to a specified number of decimal places (max 1000) |
+| `/ping` | Check Nico's WebSocket and response latency |
+| `/req <type> <details>` | Submit a bug report or feature suggestion to the developers |
+| `/help [command]` | View all commands, or get a deep dive on a specific one |
+| `@Nico <message>` | Mention Nico in any channel to chat with her directly |
 
 ### 💬 `/ask <prompt>`
 Ask Nico anything. Uses Google Gemini with **live Search Grounding** enabled for up-to-date, accurate answers. If search quota is exceeded, she automatically falls back to her base knowledge — no interruption.
@@ -76,6 +90,26 @@ Sends your query to the **Wolfram|Alpha API** and returns the primary result pod
 /wolf integrate x^2 sin(x) dx
 /wolf population of Japan in 2024
 /wolf boiling point of ethanol in fahrenheit
+```
+
+---
+
+### 📈 `/graph <equation> [x_min] [x_max]`
+Parses and plots a mathematical function `y = f(x)` over a configurable x range. Powered by **SymPy** for safe symbolic parsing and **Matplotlib** for rendering. The output is a dark Discord-themed image embed.
+
+**Supported syntax:**
+- Use `^` or `**` for exponents: `x^2` or `x**2`
+- Implicit multiplication is supported: `2x` → `2*x`
+- Standard math functions: `sin`, `cos`, `tan`, `exp`, `log`, `sqrt`, `abs`
+- `x_min` and `x_max` default to `-10` and `10` respectively
+
+**Best for:** Visualising functions, checking homework graphs, exploring curve behaviour.
+
+```
+/graph x^2 - 4
+/graph sin(x) -6.28 6.28
+/graph x/(x-2) -5 5
+/graph 2x^3 - 3x^2 - 11x + 6
 ```
 
 ---
@@ -156,6 +190,7 @@ Mention Nico directly in any channel to chat with her. She'll respond in charact
 | Discord Library | [discord.py](https://discordpy.readthedocs.io/) v2.3+ |
 | AI Model | Google Gemini (`gemini-3.6-flash`) via [`google-genai`](https://pypi.org/project/google-genai/) |
 | Compute Engine | [Wolfram\|Alpha API](https://products.wolframalpha.com/api/) v2 |
+| Graphing | [Matplotlib](https://matplotlib.org/) + [NumPy](https://numpy.org/) + [SymPy](https://www.sympy.org/) |
 | Web Server | [aiohttp](https://docs.aiohttp.org/) |
 | Config | [`python-dotenv`](https://pypi.org/project/python-dotenv/) |
 
