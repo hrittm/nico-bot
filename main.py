@@ -1,6 +1,7 @@
 import asyncio
 import os
 from aiohttp import web
+import aiohttp
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -22,16 +23,20 @@ class NicoBot(commands.Bot):
             except Exception as e:
                 print(f"❌ Failed to load cog {cog}: {e}")
 
-        # 2. Sync Slash Commands ONCE on startup
-        try:
-            synced = await self.tree.sync()
-            print(f"🔁 Synced {len(synced)} slash commands globally.")
-        except Exception as e:
-            print(f"⚠️ Failed to sync slash commands: {e}")
+        # 2. Sync Slash Commands
+        # To avoid hitting Discord's strict global sync rate limits during restarts,
+        # you can set SYNC_COMMANDS=false in your environment once commands are registered.
+        should_sync = os.getenv("SYNC_COMMANDS", "true").lower() in ("true", "1", "yes")
+        if should_sync:
+            try:
+                synced = await self.tree.sync()
+                print(f"🔁 Synced {len(synced)} slash commands globally.")
+            except Exception as e:
+                print(f"⚠️ Failed to sync slash commands: {e}")
 
     async def on_ready(self):
-        # Only print connection message, DO NOT sync tree here!
         print(f"✅ Logged in as {self.user} (ID: {self.user.id})")
+        print("🤖 Nico is online and listening for interactions.")
 
 
 async def handle_health_check(request):
@@ -51,6 +56,7 @@ async def start_dummy_server():
 
 
 async def main():
+    # Start web server immediately so Render/UptimeRobot health checks pass
     await start_dummy_server()
 
     token = os.getenv("DISCORD_TOKEN")
@@ -58,38 +64,41 @@ async def main():
         print("❌ DISCORD_TOKEN is missing in environment variables.")
         return
 
-    # Retry loop with exponential backoff for Cloudflare / Discord 429 rate limits.
-    #
-    # IMPORTANT: A fresh NicoBot() must be created on every attempt.
-    # When `async with bot:` exits (even due to an exception), discord.py closes
-    # the underlying aiohttp ClientSession. Reusing the same bot object on the
-    # next iteration means calling .start() on a closed session, which raises:
-    #   RuntimeError: Session is closed
-    # Creating a new instance gives a brand-new session for each attempt.
-    max_retries = 5
-    delay = 15  # start with 15 seconds
+    delay = 15       # Starting backoff delay in seconds
+    max_delay = 120   # Maximum backoff cap (2 minutes)
 
-    for attempt in range(1, max_retries + 1):
-        bot = NicoBot()  # ← fresh instance each time to avoid closed-session errors
+    while True:
+        # A fresh NicoBot instance must be created on every attempt to provide
+        # a new aiohttp ClientSession and avoid "RuntimeError: Session is closed"
+        bot = NicoBot()
         try:
             async with bot:
                 await bot.start(token)
-            break  # clean exit — no need to retry
-        except discord.errors.HTTPException as e:
-            if e.status == 429:
-                print(f"⚠️ Discord/Cloudflare rate limit hit (429). Attempt {attempt}/{max_retries}.")
-                if attempt < max_retries:
-                    print(f"⏳ Waiting {delay} seconds before retrying...")
-                    await asyncio.sleep(delay)
-                    delay *= 2  # Exponential backoff: 15s → 30s → 60s → 120s → 240s
-                else:
-                    print("❌ Max retries reached. Exiting.")
-                    raise
+            # If start() exits cleanly without exceptions, break out of loop
+            break
+
+        except (discord.errors.HTTPException,
+                discord.errors.GatewayNotFound,
+                discord.errors.ConnectionClosed,
+                aiohttp.ClientError,
+                OSError) as e:
+            status = getattr(e, "status", None)
+            if status == 429:
+                print(f"⚠️ Discord/Cloudflare 429 Rate Limit. Backing off for {delay}s...")
+            elif status and 500 <= status < 600:
+                print(f"⚠️ Cloudflare/Discord Server Error ({status}) - Render IP may be temporarily blocked. Waiting {delay}s...")
             else:
-                raise
+                first_line = str(e).split("\n")[0][:120]
+                print(f"⚠️ Discord connection error ({status or type(e).__name__}): {first_line}. Waiting {delay}s...")
+
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, max_delay)
+
         except Exception as e:
-            print(f"❌ Unexpected connection error: {e}")
-            raise
+            first_line = str(e).split("\n")[0][:120]
+            print(f"❌ Unexpected error ({type(e).__name__}): {first_line}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, max_delay)
 
 
 if __name__ == "__main__":
