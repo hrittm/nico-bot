@@ -52,12 +52,35 @@ async def start_dummy_server():
 async def main():
     await start_dummy_server()
     
-    async with bot:
-        token = os.getenv("DISCORD_TOKEN")
-        if not token:
-            print("❌ DISCORD_TOKEN is missing in environment variables.")
-            return
-        await bot.start(token)
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        print("❌ DISCORD_TOKEN is missing in environment variables.")
+        return
+
+    # Retry loop with exponential backoff for Cloudflare / Discord 429 rate limits
+    max_retries = 5
+    delay = 15  # start with 15 seconds delay
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with bot:
+                await bot.start(token)
+            break
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                print(f"⚠️ Discord/Cloudflare rate limit hit (429). Attempt {attempt}/{max_retries}.")
+                if attempt < max_retries:
+                    print(f"⏳ Waiting {delay} seconds before retrying...")
+                    await asyncio.sleep(delay)
+                    delay *= 2  # Exponential backoff: 15s -> 30s -> 60s -> 120s
+                else:
+                    print("❌ Max retries reached. Exiting.")
+                    raise e
+            else:
+                raise e
+        except Exception as e:
+            print(f"❌ Unexpected connection error: {e}")
+            raise e
 
 if __name__ == "__main__":
     try:
