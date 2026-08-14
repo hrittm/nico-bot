@@ -235,6 +235,9 @@ DISCORD_TOKEN=your_discord_bot_token
 GEMINI_API_KEY=your_google_gemini_api_key
 WOLFRAM_APP_ID=your_wolfram_app_id
 LOG_CHANNEL_ID=your_log_channel_id
+SYNC_COMMANDS=false
+# Optional (recommended for quick updates in one server):
+# SYNC_GUILD_ID=123456789012345678
 ```
 
 > **`LOG_CHANNEL_ID`** — The numeric ID of a private Discord channel where `/req` submissions will be posted. The bot must have **Send Messages** permission in that channel.
@@ -250,12 +253,15 @@ You should see output like:
 ```
 ⚡ Loaded cog: cogs.ai
 ⚡ Loaded cog: cogs.utility
-🔁 Synced 8 slash commands globally.
+ℹ️ Slash command sync skipped (SYNC_COMMANDS is false).
 🌐 Web server listening on port 8080 for health checks.
 ✅ Logged in as Nico#XXXX (ID: ...)
 ```
 
-> **Note on slash command sync:** Commands are synced globally on every startup. It may take up to **1 hour** for new commands to appear for all users on Discord after first deployment.
+> **Slash command sync strategy (recommended):**
+> - Keep `SYNC_COMMANDS=false` for normal restarts (avoids extra Discord API pressure).
+> - Set `SYNC_COMMANDS=true` only when you add/change commands.
+> - Prefer setting `SYNC_GUILD_ID` while developing so sync targets one server and updates appear quickly.
 
 ---
 
@@ -295,9 +301,13 @@ Point an uptime monitoring service to your deployment URL to prevent it from sle
 - [UptimeRobot](https://uptimerobot.com) — Free HTTP monitor, pings every 5 minutes
 - [Better Stack](https://betterstack.com) — Free tier available
 
-The health check endpoint responds to `GET /` with:
+The health check endpoint responds to `GET /` with either:
 ```
-Nico Bot is online and running!
+Nico Bot is online and connected to Discord.
+```
+or
+```
+Nico Bot process is running, but Discord is not connected yet.
 ```
 
 ---
