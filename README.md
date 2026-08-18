@@ -207,7 +207,7 @@ Mention Nico directly in any channel to chat with her. She'll respond in charact
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/nico-bot.git
+git clone https://github.com/hrittm/nico-bot.git
 cd nico-bot
 ```
 
@@ -318,4 +318,4 @@ Found a bug or have a feature idea? Use `/req` directly in Discord and Nico will
 
 ---
 
-*Inspired by the resilient scholar who read the Poneglyphs — and lived to tell the tale.*
+*Inspired by the resilient scholar who read the Poneglyphs — and lived to tell the tale.*  
