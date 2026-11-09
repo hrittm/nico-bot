@@ -81,12 +81,13 @@ COMMAND_HELP: dict[str, dict] = {
     },
     "pi": {
         "emoji": "π",
-        "short": "Print π to up to 1000 decimal places.",
+        "short": "Print π to up to 1,000,000 decimal places.",
         "usage": "`/pi [digits]`",
         "details": (
             "Prints the value of **π (pi)** to the number of decimal places you specify. "
             "Defaults to 10 decimal places if no argument is provided. "
-            "Maximum precision supported is **1000 digits**, stored locally for an instant response.\n\n"
+            "Maximum precision supported is **1,000,000 digits**, stored locally for an instant response. "
+            "For requests exceeding Discord's 2,000-character message limit, results are provided as a downloadable text file attachment.\n\n"
             "**Best for:** Math reference, academic exercises, or just curiosity."
         ),
         "example": "`/pi 50`",
@@ -244,20 +245,23 @@ class LocalUtilities(commands.Cog):
     # /pi
     # -----------------------------------------------------------------------
     @app_commands.command(name="pi", description="Print Pi to a specified number of decimal places.")
-    @app_commands.describe(digits="Number of decimal places to view (1 to 1000).")
+    @app_commands.describe(digits="Number of decimal places to view (1 to 1,000,000).")
     async def pi(self, interaction: discord.Interaction, digits: int = 10):
         if digits < 1:
             await interaction.response.send_message("Please request at least 1 digit.", ephemeral=True)
             return
-        if digits > 1000:
-            await interaction.response.send_message("Maximum supported precision is 1000 digits.", ephemeral=True)
+        if digits > 1000000:
+            await interaction.response.send_message("Maximum supported precision is 1,000,000 digits.", ephemeral=True)
             return
 
         pi_str = self.pi_data[: 2 + digits]
 
         if len(pi_str) > 1900:
+            buffer = io.BytesIO(pi_str.encode("utf-8"))
+            file = discord.File(buffer, filename=f"pi_{digits}_digits.txt")
             await interaction.response.send_message(
-                f"**π to {digits} decimal places:**\n```\n{pi_str[:1900]}...\n```"
+                f"**π to {digits:,} decimal places** (sent as file attachment due to length):",
+                file=file
             )
         else:
             await interaction.response.send_message(f"**π to {digits} decimal places:**\n```{pi_str}```")

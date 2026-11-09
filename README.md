@@ -34,7 +34,7 @@ These traits make her persona a natural fit for an academic bot: warm without be
 | 🧮 **`/wolf`** | Query Wolfram\|Alpha and receive high-definition image result pods |
 | 📈 **`/graph`** | Plot any `y = f(x)` function as a dark-themed graph image, powered by SymPy + Matplotlib |
 | ⚛️ **`/atom`** | Offline periodic table lookup by element name or symbol |
-| π **`/pi`** | Print π to up to 1000 decimal places, instantly |
+| π **`/pi`** | Print π to up to 1,000,000 decimal places, instantly |
 | 📬 **`/req`** | Submit bug reports or feature suggestions directly to a developer log channel |
 | 📖 **`/help`** | Full command overview, or a detailed breakdown of any specific command |
 | 🌐 **Health Check Server** | Lightweight HTTP server for uptime monitoring via UptimeRobot / Render |
@@ -50,7 +50,7 @@ These traits make her persona a natural fit for an academic bot: warm without be
 | `/wolf <query>` | Query Wolfram\|Alpha and get the result as an image pod + text |
 | `/graph <equation> [x_min] [x_max]` | Plot a `y = f(x)` function as a dark-themed graph image |
 | `/atom <element>` | Look up element info by name or symbol |
-| `/pi [digits]` | Print π to a specified number of decimal places (max 1000) |
+| `/pi [digits]` | Print π to a specified number of decimal places (max 1,000,000) |
 | `/ping` | Check Nico's WebSocket and response latency |
 | `/req <type> <details>` | Submit a bug report or feature suggestion to the developers |
 | `/help [command]` | View all commands, or get a deep dive on a specific one |
@@ -128,12 +128,12 @@ Returns: Atomic number, atomic mass, category, phase at STP, electron configurat
 ---
 
 ### π `/pi [digits]`
-Prints **π (pi)** to the number of decimal places you specify. Defaults to 10. Maximum is 1000 digits, stored locally for an instant response.
+Prints **π (pi)** to the number of decimal places you specify. Defaults to 10. Maximum is 1,000,000 digits, stored locally for an instant response. Results exceeding Discord's message limit are sent automatically as a text file attachment.
 
 ```
 /pi          → 3.1415926535 (default 10 digits)
 /pi 50       → π to 50 decimal places
-/pi 1000     → π to 1000 decimal places
+/pi 1000000  → π to 1,000,000 decimal places (file attachment)
 ```
 
 ---
@@ -279,7 +279,7 @@ nico-bot/
 │                             # SOLVE_SYSTEM_PROMPT (neutral academic solver)
 ├── data/
 │   ├── periodic_table.json   # Offline element database (118 elements)
-│   └── pi_digits.txt         # Pre-computed Pi to 1000 decimal places
+│   └── pi_digits.txt         # Pre-computed Pi to 1,000,000 decimal places
 ├── requirements.txt
 ├── Procfile                  # Deployment config for Render / Railway
 └── .env                      # Environment variables (never committed)
