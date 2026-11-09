@@ -12,7 +12,9 @@ load_dotenv()
 
 class NicoBot(commands.Bot):
     def __init__(self, state: dict[str, bool]):
-        super().__init__(command_prefix="!", intents=discord.Intents.default())
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix="!", intents=intents)
         self.state = state
 
     async def setup_hook(self):
@@ -113,6 +115,13 @@ async def main():
                 await bot.start(token)
             # If start() exits cleanly without exceptions, break out of loop.
             break
+
+        except discord.errors.PrivilegedIntentsRequired:
+            state["is_discord_ready"] = False
+            print("❌ PrivilegedIntentsRequired: 'Message Content Intent' is not enabled in the Discord Developer Portal.")
+            print("👉 To fix: Go to https://discord.com/developers/applications -> Your App -> Bot tab -> Privileged Gateway Intents -> Enable 'Message Content Intent' -> Save Changes.")
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, max_delay)
 
         except (discord.errors.HTTPException,
                 discord.errors.GatewayNotFound,
